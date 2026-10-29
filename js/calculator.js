@@ -483,16 +483,42 @@
       </div>`;
   }
 
+  function estimateSummaryText(est) {
+    return [
+      `Mid-range: ${money(est.rangeMid)} before ${est.taxLabel}`,
+      `Range: ${money(est.rangeLow)} – ${money(est.rangeHigh)}`,
+      est.summaryBits.join(" · "),
+      `Municipality: ${DATA.municipalities.find((m) => m.key === state.municipalityKey)?.label || ""}`,
+      `Lot type: ${DATA.locationOptions.find((o) => o.key === state.locationKey)?.label || ""}`
+    ].join("\n");
+  }
+
   function stepResult() {
     return `
       <div class="calc-step">
         <h2>Your detailed estimate</h2>
-        <p class="calc-step-hint">Download your PDF for your records, or get in touch with Revel using the contact form below.</p>
+        <p class="calc-step-hint">Download your PDF, and email a copy to Revel Homes. The contact form below is separate for general inquiries.</p>
 
         <div class="calc-result-actions">
           <button type="button" class="calc-btn calc-btn-primary" data-action="pdf">Download your PDF</button>
-          <a class="calc-btn calc-btn-secondary" href="#contact-home">Contact Revel Homes</a>
           <a class="calc-btn calc-btn-ghost" href="${DATA.scheduleUrl}">Call 705 985 4776</a>
+        </div>
+
+        <div class="calc-email-panel">
+          <p class="calc-email-title">Email this estimate to Revel Homes</p>
+          <p class="calc-hint">Revel receives your details and the PDF. During testing, messages go to forms@collingwoodwebdesign.com.</p>
+          <div class="calc-email-grid">
+            <label>
+              <span>Name</span>
+              <input type="text" id="calc-lead-name" name="calc-lead-name" autocomplete="name" required placeholder="Your name">
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" id="calc-lead-email" name="calc-lead-email" autocomplete="email" required placeholder="you@email.com">
+            </label>
+          </div>
+          <button type="button" class="calc-btn calc-btn-secondary" data-action="email-revel">Email estimate to Revel Homes</button>
+          <p class="calc-email-status" data-calc-email-status role="status" aria-live="polite"></p>
         </div>
 
         <p class="calc-disclaimer">${DATA.disclaimer}</p>
@@ -590,6 +616,9 @@
     });
     root.querySelectorAll("[data-action='pdf']").forEach((btn) => {
       btn.addEventListener("click", () => downloadPdf(est));
+    });
+    root.querySelectorAll("[data-action='email-revel']").forEach((btn) => {
+      btn.addEventListener("click", () => emailEstimateToRevel(est, btn));
     });
   }
 
@@ -738,6 +767,111 @@
       return;
     }
     doc.save("revel-homes-build-estimate.pdf");
+  }
+
+  function setEmailStatus(message, isError) {
+    const el = root.querySelector("[data-calc-email-status]");
+    if (!el) return;
+    el.textContent = message || "";
+    el.classList.toggle("is-error", !!isError);
+  }
+
+  async function emailEstimateToRevel(est, button) {
+    const nameInput = root.querySelector("#calc-lead-name");
+    const emailInput = root.querySelector("#calc-lead-email");
+    const name = (nameInput && nameInput.value.trim()) || "";
+    const email = (emailInput && emailInput.value.trim()) || "";
+
+    if (!name || !email) {
+      setEmailStatus("Please enter your name and email.", true);
+      if (!name && nameInput) nameInput.focus();
+      else if (emailInput) emailInput.focus();
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailStatus("Please enter a valid email address.", true);
+      if (emailInput) emailInput.focus();
+      return;
+    }
+
+    const doc = buildPdfDoc(est);
+    if (!doc) {
+      setEmailStatus("Could not create the PDF. Please try Download your PDF instead.", true);
+      return;
+    }
+
+    const blob = doc.output("blob");
+    const pdfFile = new File([blob], "revel-homes-build-estimate.pdf", {
+      type: "application/pdf"
+    });
+
+    const payload = {
+      page_url: window.location.href,
+      fields: [
+        { name: "Name", label: "Name", value: name },
+        { name: "Email", label: "Email", value: email },
+        { name: "Subject", label: "Subject", value: "Custom home build calculator estimate" },
+        {
+          name: "Message",
+          label: "Message",
+          value: "A visitor emailed a calculator estimate PDF from the budget page."
+        },
+        {
+          name: "Estimate Summary",
+          label: "Estimate Summary",
+          value: estimateSummaryText(est)
+        }
+      ]
+    };
+
+    const formData = new FormData();
+    formData.append("payload", JSON.stringify(payload));
+    formData.append("Build Estimate PDF", pdfFile, pdfFile.name);
+
+    if (button) button.disabled = true;
+    setEmailStatus("Sending estimate to Revel Homes…", false);
+
+    try {
+      const response = await fetch(
+        "https://web-production-54a6d.up.railway.app/v1/contact",
+        {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          body: formData
+        }
+      );
+
+      if (response.status === 429) {
+        setEmailStatus("Please wait a few seconds and try again.", true);
+        return;
+      }
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const data = await response.json();
+          detail = data && (data.detail || data.message) ? String(data.detail || data.message) : "";
+        } catch (e) {
+          /* ignore */
+        }
+        setEmailStatus(
+          detail
+            ? `Could not send (${detail}). If this keeps happening, ask Aaron to allow this preview domain for Forms@CWD.`
+            : "Could not send the estimate. Please try again, or use the contact form below.",
+          true
+        );
+        return;
+      }
+
+      setEmailStatus("Sent — Revel Homes has your estimate PDF (forms@collingwoodwebdesign.com while testing).", false);
+      downloadPdf(est);
+    } catch (err) {
+      setEmailStatus(
+        "Network error. Open the GitHub Pages preview (not a local file) and try again.",
+        true
+      );
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   render();
