@@ -483,13 +483,49 @@
       </div>`;
   }
 
+  function selectionDetails() {
+    const muni = DATA.municipalities.find((m) => m.key === state.municipalityKey);
+    const lot = DATA.locationOptions.find((o) => o.key === state.locationKey);
+    const servicingLabel =
+      state.servicing === "municipal" ? "Municipal water/sewer" : "Well + septic";
+    const rockLabel =
+      state.rockBlasting === "moderate"
+        ? "Some rock"
+        : state.rockBlasting === "heavy"
+          ? "Heavy rock"
+          : "Standard";
+    const lines = [
+      ["Municipality", muni ? muni.label : state.municipalityKey],
+      ["Lot type", lot ? lot.label : state.locationKey],
+      ["Site servicing", servicingLabel],
+      ["Site conditions (rock)", rockLabel],
+      ["Long rural driveway", state.hasRuralDriveway ? "Yes" : "No"]
+    ];
+    if (state.coveredPorch > 0) lines.push(["Covered porch", fmtSqft(state.coveredPorch)]);
+    if (state.muskokaRoom > 0) {
+      lines.push(["Muskoka / 3-season room", fmtSqft(state.muskokaRoom)]);
+    }
+    return lines;
+  }
+
   function estimateSummaryText(est) {
+    const selection = selectionDetails()
+      .map(([label, value]) => `${label}: ${value}`)
+      .join("\n");
+    const allowances = est.allowances
+      .filter((z) => z.total > 0)
+      .map((z) => `${z.label}: ${money(z.total)} (${fmtSqft(z.sqft)})`)
+      .join("\n");
     return [
       `Mid-range: ${money(est.rangeMid)} before ${est.taxLabel}`,
       `Range: ${money(est.rangeLow)} – ${money(est.rangeHigh)}`,
       est.summaryBits.join(" · "),
-      `Municipality: ${DATA.municipalities.find((m) => m.key === state.municipalityKey)?.label || ""}`,
-      `Lot type: ${DATA.locationOptions.find((o) => o.key === state.locationKey)?.label || ""}`
+      "",
+      "Selections:",
+      selection,
+      "",
+      "Finish allowances (part of construction):",
+      allowances || "None"
     ].join("\n");
   }
 
@@ -501,7 +537,7 @@
 
         <div class="calc-email-panel">
           <p class="calc-email-title">Email this estimate to Revel Homes</p>
-          <p class="calc-hint">Same as the original calculator lead: Revel gets your name, email, and estimate details. During testing, messages go to forms@collingwoodwebdesign.com.</p>
+          <p class="calc-hint">Revel gets your name, email, estimate details, and the PDF. During testing, messages go to forms@collingwoodwebdesign.com.</p>
           <div class="calc-email-grid">
             <label>
               <span>Name</span>
@@ -656,59 +692,93 @@
     const gold = [146, 110, 56];
     let y = 52;
 
+    function ensureSpace(needed) {
+      if (y + needed <= pageH - 40) return;
+      doc.addPage();
+      y = 48;
+    }
+
     function writeWrapped(text, x, startY, maxW, lineH) {
       const lines = doc.splitTextToSize(String(text || ""), maxW);
       doc.text(lines, x, startY);
       return startY + lines.length * lineH;
     }
 
+    function sectionTitle(title) {
+      ensureSpace(28);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(...navy);
+      doc.text(title, left, y);
+      y += 15;
+    }
+
+    function kvRow(label, value, emphasize) {
+      ensureSpace(18);
+      doc.setFont("helvetica", emphasize ? "bold" : "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...(emphasize ? navy : ink));
+      const labelLines = doc.splitTextToSize(String(label), width - 130);
+      doc.text(labelLines, left, y);
+      doc.text(String(value), right, y, { align: "right" });
+      y += Math.max(14, labelLines.length * 12);
+    }
+
     // Header bar
     doc.setFillColor(...navy);
-    doc.rect(0, 0, pageW, 64, "F");
+    doc.rect(0, 0, pageW, 58, "F");
     doc.setFillColor(...gold);
-    doc.rect(0, 64, pageW, 4, "F");
+    doc.rect(0, 58, pageW, 3, "F");
 
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("Revel Homes", left, 30);
+    doc.setFontSize(15);
+    doc.text("Revel Homes", left, 28);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text("Preliminary build-cost estimate", left, 46);
-    y = 92;
+    doc.setFontSize(9.5);
+    doc.text("Preliminary build-cost estimate", left, 44);
+    y = 82;
 
     doc.setTextColor(...ink);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.text("Estimated cost range", left, y);
-    y += 20;
-    doc.setFontSize(18);
+    y += 17;
+    doc.setFontSize(16);
     doc.setTextColor(...navy);
     doc.text(`${money(est.rangeLow)}  –  ${money(est.rangeHigh)}`, left, y);
-    y += 22;
+    y += 18;
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setTextColor(...ink);
     doc.text(`Mid-range (before ${est.taxLabel}): ${money(est.rangeMid)}`, left, y);
-    y += 18;
+    y += 14;
 
     doc.setTextColor(...muted);
-    doc.setFontSize(10);
-    y = writeWrapped(est.summaryBits.join("  ·  "), left, y, width, 14);
-    y += 16;
+    doc.setFontSize(9);
+    y = writeWrapped(est.summaryBits.join("  ·  "), left, y, width, 12);
+    y += 10;
 
     doc.setDrawColor(229, 231, 235);
-    doc.setLineWidth(0.8);
+    doc.setLineWidth(0.7);
     doc.line(left, y, right, y);
-    y += 22;
+    y += 16;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...navy);
-    doc.text("Full project breakdown", left, y);
-    y += 18;
+    sectionTitle("Your selections");
+    selectionDetails().forEach(([label, value]) => kvRow(label, value, false));
+    y += 8;
 
+    const allowanceItems = est.allowances.filter((z) => z.total > 0);
+    if (allowanceItems.length) {
+      sectionTitle("Finish allowances (part of construction — not the full project)");
+      allowanceItems.forEach((z) => {
+        kvRow(`${z.label} · ${fmtSqft(z.sqft)}`, money(z.total), false);
+      });
+      y += 8;
+    }
+
+    sectionTitle("Full project breakdown");
     const rows = [
       ["Construction (rooms × $/ft²)", est.construction, false],
       ["Site costs (servicing, driveway, rock, landscaping)", est.siteCosts, false],
@@ -724,38 +794,30 @@
 
     rows.forEach(([label, amount, emphasize], index) => {
       if (emphasize) {
-        y += 6;
+        y += 4;
+        ensureSpace(20);
         doc.setDrawColor(229, 231, 235);
-        doc.line(left, y - 10, right, y - 10);
+        doc.line(left, y - 8, right, y - 8);
       }
-      doc.setFont("helvetica", emphasize ? "bold" : "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(...(emphasize ? navy : ink));
-      const labelLines = doc.splitTextToSize(label, width - 120);
-      doc.text(labelLines, left, y);
-      doc.text(money(amount), right, y, { align: "right" });
-      y += Math.max(16, labelLines.length * 13);
-      if (!emphasize && index < rows.length - 1) y += 2;
+      kvRow(label, money(amount), emphasize);
+      if (!emphasize && index < rows.length - 1) y += 1;
     });
 
-    y += 18;
+    y += 12;
+    ensureSpace(70);
     doc.setDrawColor(...gold);
     doc.setLineWidth(2);
     doc.line(left, y, left + 36, y);
-    y += 16;
+    y += 14;
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...muted);
-    y = writeWrapped(DATA.disclaimer, left, y, width, 11);
-    y += 14;
     doc.setFontSize(8);
-    doc.text("revelhomes.ca  ·  705 985 4776  ·  info@revelhomes.ca", left, Math.min(y, pageH - 36));
-
-    // Keep a single page — never add a blank second page
-    while (doc.getNumberOfPages() > 1) {
-      doc.deletePage(doc.getNumberOfPages());
-    }
+    doc.setTextColor(...muted);
+    y = writeWrapped(DATA.disclaimer, left, y, width, 10);
+    y += 12;
+    ensureSpace(14);
+    doc.setFontSize(8);
+    doc.text("revelhomes.ca  ·  705 985 4776  ·  info@revelhomes.ca", left, y);
 
     return doc;
   }
@@ -797,7 +859,19 @@
       return;
     }
 
-    // Original lead delivery: email the estimate details (no PDF attachment required).
+    const doc = buildPdfDoc(est);
+    if (!doc) {
+      setEmailStatus(
+        "PDF library did not load. Refresh the page and try again.",
+        true
+      );
+      return;
+    }
+
+    const pdfFile = new File([doc.output("blob")], "revel-homes-build-estimate.pdf", {
+      type: "application/pdf"
+    });
+
     const payload = {
       page_url: window.location.href,
       fields: [
@@ -807,7 +881,8 @@
         {
           name: "Message",
           label: "Message",
-          value: "A visitor sent their calculator estimate from the budget page."
+          value:
+            "A visitor emailed a calculator estimate from the budget page. PDF attached."
         },
         {
           name: "Estimate Summary",
@@ -857,6 +932,10 @@
       ]
     };
 
+    const formData = new FormData();
+    formData.append("payload", JSON.stringify(payload));
+    formData.append("Build Estimate PDF", pdfFile, pdfFile.name);
+
     if (button) button.disabled = true;
     setEmailStatus("Sending estimate to Revel Homes…", false);
 
@@ -865,11 +944,8 @@
         "https://web-production-54a6d.up.railway.app/v1/contact",
         {
           method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
+          headers: { Accept: "application/json" },
+          body: formData
         }
       );
 
@@ -886,7 +962,7 @@
       }
 
       setEmailStatus(
-        "Sent — Revel Homes has your estimate details (forms@collingwoodwebdesign.com while testing).",
+        "Sent — Revel Homes has your estimate and PDF (forms@collingwoodwebdesign.com while testing).",
         false
       );
     } catch (err) {
