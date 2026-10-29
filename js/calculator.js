@@ -616,45 +616,118 @@
     if (!window.jspdf || !window.jspdf.jsPDF) return null;
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
     const left = 48;
-    let y = 56;
+    const right = pageW - 48;
+    const width = right - left;
+    const navy = [31, 58, 95];
+    const ink = [43, 47, 54];
+    const muted = [107, 114, 128];
+    const gold = [146, 110, 56];
+    let y = 52;
+
+    function writeWrapped(text, x, startY, maxW, lineH) {
+      const lines = doc.splitTextToSize(String(text || ""), maxW);
+      doc.text(lines, x, startY);
+      return startY + lines.length * lineH;
+    }
+
+    // Header bar
+    doc.setFillColor(...navy);
+    doc.rect(0, 0, pageW, 64, "F");
+    doc.setFillColor(...gold);
+    doc.rect(0, 64, pageW, 4, "F");
+
+    doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("Revel Homes", left, 30);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Preliminary build-cost estimate", left, 46);
+    y = 92;
+
+    doc.setTextColor(...ink);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Estimated cost range", left, y);
+    y += 20;
     doc.setFontSize(18);
-    doc.setTextColor(31, 58, 95);
-    doc.text("Revel Homes — Preliminary build-cost estimate", left, y);
-    y += 28;
+    doc.setTextColor(...navy);
+    doc.text(`${money(est.rangeLow)}  –  ${money(est.rangeHigh)}`, left, y);
+    y += 22;
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(11);
-    doc.setTextColor(60, 60, 60);
-    doc.text(`Estimated cost range: ${money(est.rangeLow)} – ${money(est.rangeHigh)}`, left, y);
-    y += 18;
+    doc.setTextColor(...ink);
     doc.text(`Mid-range (before ${est.taxLabel}): ${money(est.rangeMid)}`, left, y);
     y += 18;
-    doc.text(est.summaryBits.join(" · "), left, y, { maxWidth: 514 });
-    y += 36;
 
-    const lines = [
-      ["Construction", est.construction],
-      ["Site costs", est.siteCosts],
-      ["Development charges", est.devCharges],
-      ["Building permits", est.permits],
-      ["Tarion enrolment", est.tarion],
-      ["Soft costs", est.softCosts],
-      ["Contingency", est.contingency],
-      [`Subtotal (before ${est.taxLabel})`, est.pretaxTotal],
-      [est.taxLabel, est.taxEstimate],
-      ["With taxes", est.pretaxTotal + est.taxEstimate]
-    ];
-    lines.forEach(([label, amount]) => {
-      doc.text(label, left, y);
-      doc.text(money(amount), 560, y, { align: "right" });
-      y += 18;
-    });
+    doc.setTextColor(...muted);
+    doc.setFontSize(10);
+    y = writeWrapped(est.summaryBits.join("  ·  "), left, y, width, 14);
+    y += 16;
+
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.8);
+    doc.line(left, y, right, y);
+    y += 22;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...navy);
+    doc.text("Full project breakdown", left, y);
     y += 18;
-    doc.setFontSize(9);
-    doc.setTextColor(100, 100, 100);
-    const disc = doc.splitTextToSize(DATA.disclaimer, 514);
-    doc.text(disc, left, y);
+
+    const rows = [
+      ["Construction (rooms × $/ft²)", est.construction, false],
+      ["Site costs (servicing, driveway, rock, landscaping)", est.siteCosts, false],
+      ["Development charges", est.devCharges, false],
+      ["Building permits", est.permits, false],
+      ["Tarion enrolment", est.tarion, false],
+      ["Soft costs (architect, engineering, legal)", est.softCosts, false],
+      ["Contingency", est.contingency, false],
+      [`Subtotal (before ${est.taxLabel})`, est.pretaxTotal, true],
+      [`${est.taxLabel} (rebate may apply)`, est.taxEstimate, false],
+      ["With taxes", est.pretaxTotal + est.taxEstimate, true]
+    ];
+
+    rows.forEach(([label, amount, emphasize], index) => {
+      if (emphasize) {
+        y += 6;
+        doc.setDrawColor(229, 231, 235);
+        doc.line(left, y - 10, right, y - 10);
+      }
+      doc.setFont("helvetica", emphasize ? "bold" : "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(...(emphasize ? navy : ink));
+      const labelLines = doc.splitTextToSize(label, width - 120);
+      doc.text(labelLines, left, y);
+      doc.text(money(amount), right, y, { align: "right" });
+      y += Math.max(16, labelLines.length * 13);
+      if (!emphasize && index < rows.length - 1) y += 2;
+    });
+
+    y += 18;
+    doc.setDrawColor(...gold);
+    doc.setLineWidth(2);
+    doc.line(left, y, left + 36, y);
+    y += 16;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...muted);
+    y = writeWrapped(DATA.disclaimer, left, y, width, 11);
+    y += 14;
+    doc.setFontSize(8);
+    doc.text("revelhomes.ca  ·  705 985 4776  ·  info@revelhomes.ca", left, Math.min(y, pageH - 36));
+
+    // Keep a single page — never add a blank second page
+    while (doc.getNumberOfPages() > 1) {
+      doc.deletePage(doc.getNumberOfPages());
+    }
+
     return doc;
   }
 
