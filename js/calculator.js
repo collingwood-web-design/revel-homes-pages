@@ -677,7 +677,7 @@
     }
   }
 
-  function buildPdfDoc(est) {
+  function buildPdfDoc(est, lead) {
     if (!window.jspdf || !window.jspdf.jsPDF) return null;
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -690,6 +690,8 @@
     const ink = [43, 47, 54];
     const muted = [107, 114, 128];
     const gold = [146, 110, 56];
+    const leadName = lead && lead.name ? String(lead.name).trim() : "";
+    const leadEmail = lead && lead.email ? String(lead.email).trim() : "";
     let y = 52;
 
     function ensureSpace(needed) {
@@ -765,6 +767,13 @@
     doc.line(left, y, right, y);
     y += 16;
 
+    if (leadName || leadEmail) {
+      sectionTitle("Prepared for");
+      if (leadName) kvRow("Name", leadName, false);
+      if (leadEmail) kvRow("Email", leadEmail, false);
+      y += 8;
+    }
+
     sectionTitle("Your selections");
     selectionDetails().forEach(([label, value]) => kvRow(label, value, false));
     y += 8;
@@ -822,8 +831,17 @@
     return doc;
   }
 
+  function leadFromForm() {
+    const nameInput = root.querySelector("#calc-lead-name");
+    const emailInput = root.querySelector("#calc-lead-email");
+    return {
+      name: (nameInput && nameInput.value.trim()) || "",
+      email: (emailInput && emailInput.value.trim()) || ""
+    };
+  }
+
   function downloadPdf(est) {
-    const doc = buildPdfDoc(est);
+    const doc = buildPdfDoc(est, leadFromForm());
     if (!doc) {
       setEmailStatus(
         "PDF library did not load. Refresh the page and try Download your PDF again.",
@@ -859,7 +877,7 @@
       return;
     }
 
-    const doc = buildPdfDoc(est);
+    const doc = buildPdfDoc(est, { name, email });
     if (!doc) {
       setEmailStatus(
         "PDF library did not load. Refresh the page and try again.",
