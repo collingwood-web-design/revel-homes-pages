@@ -497,16 +497,11 @@
     return `
       <div class="calc-step">
         <h2>Your detailed estimate</h2>
-        <p class="calc-step-hint">Download your PDF, and email a copy to Revel Homes. The contact form below is separate for general inquiries.</p>
-
-        <div class="calc-result-actions">
-          <button type="button" class="calc-btn calc-btn-primary" data-action="pdf">Download your PDF</button>
-          <a class="calc-btn calc-btn-ghost" href="${DATA.scheduleUrl}">Call 705 985 4776</a>
-        </div>
+        <p class="calc-step-hint">Email your estimate to Revel Homes, or download a PDF for yourself. The contact form below is for general inquiries.</p>
 
         <div class="calc-email-panel">
           <p class="calc-email-title">Email this estimate to Revel Homes</p>
-          <p class="calc-hint">Revel receives your details and the PDF. During testing, messages go to forms@collingwoodwebdesign.com.</p>
+          <p class="calc-hint">Same as the original calculator lead: Revel gets your name, email, and estimate details. During testing, messages go to forms@collingwoodwebdesign.com.</p>
           <div class="calc-email-grid">
             <label>
               <span>Name</span>
@@ -517,8 +512,13 @@
               <input type="email" id="calc-lead-email" name="calc-lead-email" autocomplete="email" required placeholder="you@email.com">
             </label>
           </div>
-          <button type="button" class="calc-btn calc-btn-secondary" data-action="email-revel">Email estimate to Revel Homes</button>
+          <button type="button" class="calc-btn calc-btn-primary" data-action="email-revel">Email estimate to Revel Homes</button>
           <p class="calc-email-status" data-calc-email-status role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="calc-result-actions">
+          <button type="button" class="calc-btn calc-btn-secondary" data-action="pdf">Download your PDF</button>
+          <a class="calc-btn calc-btn-ghost" href="${DATA.scheduleUrl}">Call 705 985 4776</a>
         </div>
 
         <p class="calc-disclaimer">${DATA.disclaimer}</p>
@@ -763,7 +763,10 @@
   function downloadPdf(est) {
     const doc = buildPdfDoc(est);
     if (!doc) {
-      window.print();
+      setEmailStatus(
+        "PDF library did not load. Refresh the page and try Download your PDF again.",
+        true
+      );
       return;
     }
     doc.save("revel-homes-build-estimate.pdf");
@@ -794,17 +797,7 @@
       return;
     }
 
-    const doc = buildPdfDoc(est);
-    if (!doc) {
-      setEmailStatus("Could not create the PDF. Please try Download your PDF instead.", true);
-      return;
-    }
-
-    const blob = doc.output("blob");
-    const pdfFile = new File([blob], "revel-homes-build-estimate.pdf", {
-      type: "application/pdf"
-    });
-
+    // Original lead delivery: email the estimate details (no PDF attachment required).
     const payload = {
       page_url: window.location.href,
       fields: [
@@ -814,19 +807,55 @@
         {
           name: "Message",
           label: "Message",
-          value: "A visitor emailed a calculator estimate PDF from the budget page."
+          value: "A visitor sent their calculator estimate from the budget page."
         },
         {
           name: "Estimate Summary",
           label: "Estimate Summary",
           value: estimateSummaryText(est)
+        },
+        {
+          name: "Construction",
+          label: "Construction",
+          value: money(est.construction)
+        },
+        {
+          name: "Site costs",
+          label: "Site costs",
+          value: money(est.siteCosts)
+        },
+        {
+          name: "Development charges",
+          label: "Development charges",
+          value: money(est.devCharges)
+        },
+        {
+          name: "Soft costs",
+          label: "Soft costs",
+          value: money(est.softCosts)
+        },
+        {
+          name: "Contingency",
+          label: "Contingency",
+          value: money(est.contingency)
+        },
+        {
+          name: "Subtotal before tax",
+          label: "Subtotal before tax",
+          value: money(est.pretaxTotal)
+        },
+        {
+          name: est.taxLabel || "HST",
+          label: est.taxLabel || "HST",
+          value: money(est.taxEstimate)
+        },
+        {
+          name: "With taxes",
+          label: "With taxes",
+          value: money(est.pretaxTotal + est.taxEstimate)
         }
       ]
     };
-
-    const formData = new FormData();
-    formData.append("payload", JSON.stringify(payload));
-    formData.append("Build Estimate PDF", pdfFile, pdfFile.name);
 
     if (button) button.disabled = true;
     setEmailStatus("Sending estimate to Revel Homes…", false);
@@ -836,8 +865,11 @@
         "https://web-production-54a6d.up.railway.app/v1/contact",
         {
           method: "POST",
-          headers: { Accept: "application/json" },
-          body: formData
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
         }
       );
 
@@ -846,24 +878,17 @@
         return;
       }
       if (!response.ok) {
-        let detail = "";
-        try {
-          const data = await response.json();
-          detail = data && (data.detail || data.message) ? String(data.detail || data.message) : "";
-        } catch (e) {
-          /* ignore */
-        }
         setEmailStatus(
-          detail
-            ? `Could not send (${detail}). If this keeps happening, ask Aaron to allow this preview domain for Forms@CWD.`
-            : "Could not send the estimate. Please try again, or use the contact form below.",
+          "Could not send the estimate. Please try again, or use the contact form below.",
           true
         );
         return;
       }
 
-      setEmailStatus("Sent — Revel Homes has your estimate PDF (forms@collingwoodwebdesign.com while testing).", false);
-      downloadPdf(est);
+      setEmailStatus(
+        "Sent — Revel Homes has your estimate details (forms@collingwoodwebdesign.com while testing).",
+        false
+      );
     } catch (err) {
       setEmailStatus(
         "Network error. Open the GitHub Pages preview (not a local file) and try again.",
